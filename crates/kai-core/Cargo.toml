@@ -1,0 +1,8 @@
+[package]
+name = "kai-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aadi <github.com/golok727>"]
+
+[dependencies]
+ecow.workspace = true

@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+default-members = ["crates/kai-cli"]
+
+[workspace.dependencies]
+ecow = "0.2.3"
