@@ -8,12 +8,23 @@ impl Vm {
     pub fn run(&mut self) {
         let code = r#"
             let thing = a;
+            let a = thing;
         "#
         .trim()
         .to_owned();
 
         let lexer = Lexer::new(code.chars());
-        let tokens: Vec<String> = lexer.map(|e| e.unwrap().1.to_string()).collect();
+        let tokens: Vec<String> = lexer
+            .map(|res| {
+                let res = res.unwrap();
+                format!(
+                    "Token = {}, start = {}, end = {}",
+                    res.1,
+                    &res.0.to_string(),
+                    res.2
+                )
+            })
+            .collect();
 
         dbg!(tokens);
     }
