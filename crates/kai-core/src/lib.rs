@@ -1,3 +1,4 @@
+pub mod ast;
 pub mod parser;
 use parser::lexer::Lexer;
 
@@ -7,8 +8,7 @@ pub struct Vm {}
 impl Vm {
     pub fn run(&mut self) {
         let code = r#"
-            let thing = a;
-            let a = thing;
+            let a = -1000;
         "#
         .trim()
         .to_owned();

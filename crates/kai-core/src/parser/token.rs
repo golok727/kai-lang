@@ -3,14 +3,20 @@ use std::fmt::Display;
 use ecow::EcoString;
 #[derive(Clone, Debug, PartialOrd, PartialEq)]
 pub enum Token {
+    // keywords
     Let,
-    Name(EcoString),
-    DiscardName(EcoString),
     Mut,
+    Pub,
+    Return,
+
+    Name { name: EcoString },
+    DiscardName { name: EcoString },
+    Int { value: EcoString },
+    Float { value: EcoString },
+
     Eq,
     SemiColon,
     Eof,
-    Return,
     Unknown,
 }
 
@@ -19,6 +25,7 @@ impl Display for Token {
         let s = match self {
             Token::Let => "let",
             Token::Mut => "mut",
+            Token::Pub => "pub",
             Token::Return => "return",
 
             Token::Eq => "=",
@@ -26,9 +33,11 @@ impl Display for Token {
 
             Token::Eof => "EOF",
             Token::Unknown => "Unknown",
-            Token::Name(name) => name.as_str(),
-            Token::DiscardName(name) => name.as_str(),
+            Token::Name { name } | Token::DiscardName { name } => name.as_str(),
+            Token::Int { value } => value.as_str(),
+            Token::Float { value } => value.as_str(),
         };
+
         write!(f, "{s}")
     }
 }

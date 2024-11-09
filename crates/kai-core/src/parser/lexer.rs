@@ -47,10 +47,10 @@ where
         if let Some(c) = self.c0 {
             println!("char({})", c);
             if self.is_name_start(c) {
-                let name = self.eat_name()?;
+                let name = self.name()?;
                 self.queue(name)
             } else if self.is_number_start(c, self.c1) {
-                let number = self.eat_number()?;
+                let number = self.number()?;
                 self.queue(number);
             } else {
                 self.queue((0, Token::Unknown, 0));
@@ -64,18 +64,14 @@ where
         Ok(())
     }
 
-    fn eat_number(&mut self) -> LexerResult {
-        dbg!(self.c0, self.c1);
-        todo!("number is not implemented yet")
-    }
-
-    fn eat_name(&mut self) -> LexerResult {
-        let mut name = String::from("");
+    // name
+    fn name(&mut self) -> LexerResult {
+        let mut name = String::new();
 
         let name_start = self.cursor();
 
         while self.is_name_continuation() {
-            name.push(self.next_char().expect("eat_name is not getting food"))
+            name.push(self.next_char().expect("parse_name: expected a char"))
         }
 
         let name_end = self.cursor();
@@ -84,22 +80,14 @@ where
             Some(token) => token,
             None => {
                 if name.starts_with('_') {
-                    Token::DiscardName(name.into())
+                    Token::DiscardName { name: name.into() }
                 } else {
-                    Token::Name(name.into())
+                    Token::Name { name: name.into() }
                 }
             }
         };
 
         Ok((name_start, token, name_end))
-    }
-
-    fn is_number_start(&self, start: char, next: Option<char>) -> bool {
-        match start {
-            '0'..='9' => true,
-            '_' => matches!(next, Some('0'..='9')),
-            _ => false,
-        }
     }
 
     fn is_name_start(&self, c: char) -> bool {
@@ -110,6 +98,97 @@ where
         self.c0
             .map(|c| matches!(c, '_' | 'a'..='z' | 'A'..='Z' | '0'..='9'))
             .unwrap_or(false)
+    }
+
+    // number
+    fn number(&mut self) -> LexerResult {
+        let number: SpannedToken = if self.c0 == Some('0') {
+            if matches!(self.c1, Some('x') | Some('X')) {
+                todo!("Hex radix")
+            } else if matches!(self.c1, Some('o') | Some('O')) {
+                todo!("ocatal radix")
+            } else if matches!(self.c1, Some('b') | Some('B')) {
+                todo!("binary radix")
+            } else {
+                self.eat_decomal_digits()
+            }
+        } else {
+            self.eat_decomal_digits()
+        };
+
+        Ok(number)
+    }
+
+    fn eat_decomal_digits(&mut self) -> SpannedToken {
+        self.parse_int_or_decimal(true)
+    }
+
+    fn parse_int_or_decimal(&mut self, expect_decimal: bool) -> SpannedToken {
+        let start = self.cursor();
+        let mut value = String::new();
+
+        if self.c0 == Some('-') {
+            value.push(
+                self.next_char()
+                    .expect("parse_int_or_decimal: expected a '-' "),
+            )
+        };
+
+        value.push_str(&self.try_parse_number_with_radix(10));
+
+        if expect_decimal && self.c0 == Some('.') {
+            panic!("Float not implemeted")
+        }
+
+        let end = self.cursor();
+
+        (
+            start,
+            Token::Int {
+                value: value.into(),
+            },
+            end,
+        )
+    }
+
+    fn try_parse_number_with_radix(&mut self, radix: u32) -> String {
+        let mut number = String::new();
+
+        loop {
+            if let Some(ch) = self.eat_digit(radix) {
+                number.push(ch)
+            } else if self.c0 == Some('_') && Self::match_radix(self.c1, radix) {
+                self.next_char();
+            } else {
+                break;
+            }
+        }
+
+        number
+    }
+
+    fn eat_digit(&mut self, radix: u32) -> Option<char> {
+        if Self::match_radix(self.c0, radix) {
+            Some(self.next_char().expect("eat_digit: expected a digit"))
+        } else {
+            None
+        }
+    }
+
+    fn match_radix(c: Option<char>, radix: u32) -> bool {
+        match radix {
+            2 | 8 | 10 | 16 => c.filter(|c| c.is_digit(radix)).is_some(),
+            unknown => panic!("Radix not found! {} ", unknown),
+        }
+    }
+
+    fn is_number_start(&self, start: char, next: Option<char>) -> bool {
+        match start {
+            '0'..='9' => true,
+            // negative numbers
+            '-' => matches!(next, Some('0'..='9')),
+            _ => false,
+        }
     }
 
     fn next_char(&mut self) -> Option<char> {
