@@ -34,8 +34,8 @@ impl Display for Token {
             Token::Eof => "EOF",
             Token::Unknown => "Unknown",
             Token::Name { name } | Token::DiscardName { name } => name.as_str(),
-            Token::Int { value } => value.as_str(),
-            Token::Float { value } => value.as_str(),
+            Token::Int { value } => &format!("int({})", value),
+            Token::Float { value } => &format!("float({})", value),
         };
 
         write!(f, "{s}")
