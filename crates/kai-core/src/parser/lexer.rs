@@ -102,20 +102,16 @@ where
             .unwrap_or(false)
     }
 
-    // number
+    // parse number
     fn number(&mut self) -> LexerResult {
-        let number: SpannedToken = if self.c0 == Some('0') {
-            if matches!(self.c1, Some('x') | Some('X')) {
-                todo!("Hex radix")
-            } else if matches!(self.c1, Some('o') | Some('O')) {
-                todo!("ocatal radix")
-            } else if matches!(self.c1, Some('b') | Some('B')) {
-                todo!("binary radix")
-            } else {
-                self.eat_decimal_number()?
-            }
-        } else {
-            self.eat_decimal_number()?
+        let number: SpannedToken = match self.c0 {
+            Some('0') => match self.c1 {
+                Some('x') | Some('X') => todo!("Hex radix"),
+                Some('o') | Some('O') => todo!("Octal radix"),
+                Some('b') | Some('B') => todo!("Binary radix"),
+                _ => self.eat_decimal_number()?,
+            },
+            _ => self.eat_decimal_number()?, // Handle non-'0' start with decimal number
         };
 
         Ok(number)
@@ -206,7 +202,7 @@ where
 
         if exp_val.is_empty() {
             Err(LexerError {
-                kind: LexerErrorKind::BadExponent,
+                kind: LexerErrorKind::MissingExponentValue,
                 location: Span {
                     start,
                     end: self.cursor(),
@@ -317,35 +313,47 @@ fn get_keyword_from_str(string: &str) -> Option<Token> {
 mod tests {
     use super::*;
 
-    fn float(value: &str, start: usize, end: usize) -> SpannedToken {
-        let token = Token::Float {
-            value: value.into(),
-        };
+    mod parse_numbers {
+        use super::*;
 
-        (start, token, end)
-    }
+        #[allow(unused)]
+        fn print_mock_test_data(code: &str) {
+            let lexer = Lexer::new(code.chars());
 
-    fn int(value: &str, start: usize, end: usize) -> SpannedToken {
-        let token = Token::Int {
-            value: value.into(),
-        };
+            let tokens: Vec<String> = lexer
+                .map(|res| res.unwrap())
+                .filter(|res| res.1 != Token::Unknown)
+                .map(|res| {
+                    let thing = match res.1 {
+                        Token::Float { .. } => "float",
+                        Token::Int { .. } => "int",
+                        _ => unreachable!(),
+                    };
+                    match res.1 {
+                        Token::Float { value } | Token::Int { value } => {
+                            format!("{}(\"{}\", {}, {})", thing, &value.as_str(), res.0, res.2)
+                        }
+                        _ => unreachable!(),
+                    }
+                })
+                .collect();
 
-        (start, token, end)
-    }
+            let joined = tokens.join(",\n");
+            println!("{}", joined);
+        }
 
-    #[test]
-    fn parse_numbers() {
-        let code = r#"
+        fn create_test_case() -> Vec<SpannedToken> {
+            let code = r#"
             100e10
             1e110
             1.112e100
             1e-100
             1E-100
-            100e100
+            1_00e100
             -1e10
             -1e-100
             1e+100
-            1100.1e-100
+            1_100.1e-100
             0e0
             0.0e0
             0e-1
@@ -359,40 +367,114 @@ mod tests {
             -30
             -40
         "#
-        .trim()
-        .to_owned();
+            .trim()
+            .to_owned();
 
-        let lexer = Lexer::new(code.chars());
-        let tokens: Vec<SpannedToken> = lexer
-            .map(|res| res.unwrap())
-            .filter(|res| res.1 != Token::Unknown)
-            .collect();
+            let lexer = Lexer::new(code.chars());
+            let tokens: Vec<SpannedToken> = lexer
+                .map(|res| res.unwrap())
+                .filter(|res| res.1 != Token::Unknown)
+                .collect();
 
-        let expected: Vec<SpannedToken> = vec![
-            float("100e10", 0, 6),
-            float("1e110", 19, 24),
-            float("1.112e100", 37, 46),
-            float("1e-100", 59, 65),
-            float("1E-100", 78, 84),
-            float("100e100", 97, 104),
-            float("-1e10", 117, 122),
-            float("-1e-100", 135, 142),
-            float("1e+100", 155, 161),
-            float("1100.1e-100", 174, 185),
-            float("0e0", 198, 201),
-            float("0.0e0", 214, 219),
-            float("0e-1", 232, 236),
-            float("0e+1", 249, 253),
-            float("1e+10", 266, 271),
-            float("2.5e+3", 284, 290),
-            float("-3.14e+2", 303, 311),
-            int("10", 324, 326),
-            int("20", 339, 341),
-            int("20", 355, 357),
-            int("-30", 370, 373),
-            int("-40", 386, 389),
-        ];
+            //
+            tokens
+        }
 
-        assert_eq!(tokens, expected, "There is some problems parsing numbers");
+        fn float(value: &str, start: usize, end: usize) -> SpannedToken {
+            let token = Token::Float {
+                value: value.into(),
+            };
+
+            (start, token, end)
+        }
+
+        fn int(value: &str, start: usize, end: usize) -> SpannedToken {
+            let token = Token::Int {
+                value: value.into(),
+            };
+
+            (start, token, end)
+        }
+
+        #[test]
+        fn should_parse_numbers_correcty_with_spans() {
+            // TODO add more _ tests
+            let tokens = create_test_case();
+
+            let expected: Vec<SpannedToken> = vec![
+                float("100e10", 0, 6),
+                float("1e110", 19, 24),
+                float("1.112e100", 37, 46),
+                float("1e-100", 59, 65),
+                float("1E-100", 78, 84),
+                float("100e100", 97, 105),
+                float("-1e10", 118, 123),
+                float("-1e-100", 136, 143),
+                float("1e+100", 156, 162),
+                float("1100.1e-100", 175, 187),
+                float("0e0", 200, 203),
+                float("0.0e0", 216, 221),
+                float("0e-1", 234, 238),
+                float("0e+1", 251, 255),
+                float("1e+10", 268, 273),
+                float("2.5e+3", 286, 292),
+                float("-3.14e+2", 305, 313),
+                int("10", 326, 328),
+                int("20", 341, 343),
+                int("20", 357, 359),
+                int("-30", 372, 375),
+                int("-40", 388, 391),
+            ];
+
+            assert_eq!(tokens, expected, "There is some problems parsing numbers");
+        }
+
+        #[test]
+        fn should_parse_to_actual_datatype() {
+            let expected_floats: Vec<f64> = vec![
+                100e10,
+                1e110,
+                1.112e100,
+                1e-100,
+                1E-100,
+                100e100,
+                -1e10,
+                -1e-100,
+                1e+100,
+                1100.1e-100,
+                0e0,
+                0.0e0,
+                0e-1,
+                0e+1,
+                1e+10,
+                2.5e+3,
+                -3.14e+2,
+            ];
+
+            let expected_ints: Vec<i32> = vec![10, 20, 20, -30, -40];
+
+            let tokens = create_test_case();
+
+            let mut floats: Vec<f64> = vec![];
+            let mut ints: Vec<i32> = vec![];
+
+            for item in tokens.iter() {
+                let token = &item.1;
+                match token {
+                    Token::Float { value } => {
+                        let float_val: f64 = value.parse().unwrap();
+                        floats.push(float_val);
+                    }
+                    Token::Int { value } => {
+                        let int_val: i32 = value.parse().unwrap();
+                        ints.push(int_val);
+                    }
+                    _ => {}
+                }
+            }
+
+            assert_eq!(expected_floats, floats);
+            assert_eq!(expected_ints, ints);
+        }
     }
 }
