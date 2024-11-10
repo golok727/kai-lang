@@ -4,6 +4,7 @@ use crate::ast::span::Span;
 pub enum LexerErrorKind {
     NumberTrailingUnderScore,
     MissingExponentValue,
+    EmptyRadix,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
