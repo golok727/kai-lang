@@ -15,6 +15,7 @@ pub enum Token {
     If,
     Fn,
     For,
+    In,
     Loop,
     Else,
     Return,
@@ -35,11 +36,23 @@ pub enum Token {
     Star,
     Slash,
 
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
+    LCurly,
+    RCurly,
+
+    ArrowRight,
+
     At,
     Dot,
+    DotDot,
+    DotDotDot,
     Eq,
     EqEq,
     SemiColon,
+    Colon,
     Unknown,
 
     NewLine,
@@ -63,13 +76,26 @@ impl Display for Token {
             Token::Todo => "todo",
             Token::Fn => "fn",
             Token::For => "for",
+            Token::In => "in",
             Token::Loop => "loop",
+
+            Token::LParen => "(",
+            Token::RParen => ")",
+            Token::LBracket => "[",
+            Token::RBracket => "]",
+            Token::LCurly => "{",
+            Token::RCurly => "}",
+
+            Token::ArrowRight => "->",
 
             Token::At => "@",
             Token::Dot => ".",
+            Token::DotDot => "..",
+            Token::DotDotDot => "...",
             Token::Eq => "=",
             Token::EqEq => "==",
             Token::SemiColon => ";",
+            Token::Colon => ":",
 
             Token::Name { name } | Token::DiscardName { name } => name.as_str(),
             Token::Int { value, .. } => &format!("int({})", value),

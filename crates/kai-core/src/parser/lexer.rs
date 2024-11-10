@@ -73,36 +73,93 @@ where
         Ok(())
     }
 
+    #[inline]
+    fn eat_single_token(&mut self, tk: Token) -> Token {
+        self.next_char();
+        tk
+    }
+
     fn eat_single_character(&mut self) -> Result<(), LexerError> {
         if let Some(c) = self.ch0 {
             let start = self.cursor();
+
             let token: Option<Token> = match c {
-                ' ' => {
+                '\r' => {
                     self.next_char();
+                    if self.ch1 == Some('\n') {
+                        self.next_char(); // consume '\n' after '\r'
+                    }
+                    Some(Token::NewLine) // return NewLine token for CR or CRLF
+                }
+                '\n' => {
+                    Some(self.eat_single_token(Token::NewLine)) // return NewLine token for LF
+                }
+                ' ' | '\t' | '\x0C' => {
+                    self.next_char(); // eat whitespace
                     None
                 }
+                '(' => Some(self.eat_single_token(Token::LParen)),
+                ')' => Some(self.eat_single_token(Token::RParen)),
+
+                '[' => Some(self.eat_single_token(Token::LBracket)),
+                ']' => Some(self.eat_single_token(Token::RBracket)),
+
+                '{' => Some(self.eat_single_token(Token::LCurly)),
+                '}' => Some(self.eat_single_token(Token::RCurly)),
+
+                '+' => Some(self.eat_single_token(Token::Plus)),
+                '-' => match self.ch1 {
+                    Some('>') => {
+                        self.next_char();
+                        self.next_char();
+                        Some(Token::ArrowRight)
+                    }
+                    _ => Some(self.eat_single_token(Token::Minus)),
+                },
+
+                '.' => {
+                    self.next_char();
+
+                    let mut n_dots = 1;
+
+                    if self.ch0 == Some('.') {
+                        n_dots += 1;
+                        self.next_char();
+                    }
+
+                    if self.ch0 == Some('.') {
+                        n_dots += 1;
+                        self.next_char();
+                    }
+
+                    let token = match n_dots {
+                        1 => Token::Dot,
+                        2 => Token::DotDot,
+                        3 => Token::DotDotDot,
+                        _ => unreachable!(),
+                    };
+
+                    Some(token)
+                }
+
                 '=' => {
                     if self.ch1 == Some('=') {
-                        // TODO eat whitespaces
                         self.next_char();
                         self.next_char();
                         Some(Token::EqEq)
                     } else {
-                        self.next_char();
-                        Some(Token::Eq)
+                        Some(self.eat_single_token(Token::Eq))
                     }
                 }
-                ';' => {
-                    self.next_char();
-                    Some(Token::SemiColon)
-                }
+
+                ';' => Some(self.eat_single_token(Token::SemiColon)),
+                ':' => Some(self.eat_single_token(Token::Colon)),
                 '"' => {
                     let spanned = self.eat_double_quoted_string()?;
                     self.queue(spanned);
                     None
                 }
                 _ => {
-                    // TODO remove
                     self.next_char();
                     Some(Token::Unknown)
                 }
@@ -288,7 +345,13 @@ where
         // try to parse an integer;
         value.push_str(&self.parse_number_with_radix(10));
 
-        if matches!(self.ch0, Some('e') | Some('E') | Some('.')) {
+        // TODO: check for names;
+
+        // if matches!(self.ch0, Some('e') | Some('E') | Some('.')) {
+
+        if (self.ch0 == Some('.') && (self.ch1 != Some('.')))
+            || matches!(self.ch0, Some('e') | Some('E'))
+        {
             is_decimal = true;
 
             let exp_or_dot = self
@@ -459,7 +522,9 @@ fn get_keyword_from_str(string: &str) -> Option<Token> {
         "todo" => Token::Todo,
         "fn" => Token::Fn,
         "for" => Token::For,
+        "in" => Token::In,
         "loop" => Token::Loop,
+
         _ => Token::Unknown,
     };
 
@@ -645,7 +710,7 @@ mod tests {
 
         #[test]
         fn should_parse_numbers_with_radix_correctly() {
-            let exptected = [
+            let expected = [
                 int("10", 0, 2),
                 int("0xa", 19, 22),
                 int("0xff", 39, 43),
@@ -666,7 +731,7 @@ mod tests {
                 .filter(|res| matches!(res.1, Token::Int { .. } | Token::Float { .. }))
                 .collect();
 
-            assert_eq!(tokens, exptected)
+            assert_eq!(tokens, expected)
         }
     }
 }
