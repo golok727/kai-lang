@@ -58,10 +58,10 @@ where
         if let Some(c) = self.ch0 {
             // println!("char({})", c);
             if self.is_name_start(c) {
-                let name = self.name()?;
+                let name = self.eat_name()?;
                 self.queue(name)
             } else if self.is_number_start(c) {
-                let number = self.number()?;
+                let number = self.eat_number()?;
                 self.queue(number);
             } else {
                 self.eat_single_character()?;
@@ -83,6 +83,7 @@ where
                 }
                 '=' => {
                     if self.ch1 == Some('=') {
+                        // TODO eat whitespaces
                         self.next_char();
                         self.next_char();
                         Some(Token::EqEq)
@@ -95,8 +96,10 @@ where
                     self.next_char();
                     Some(Token::SemiColon)
                 }
-                '\'' | '"' => {
-                    unimplemented!("strings are under construction")
+                '"' => {
+                    let spanned = self.eat_double_quoted_string()?;
+                    self.queue(spanned);
+                    None
                 }
                 _ => {
                     // TODO remove
@@ -116,7 +119,7 @@ where
     }
 
     // name
-    fn name(&mut self) -> LexerResult {
+    fn eat_name(&mut self) -> LexerResult {
         let mut name = String::new();
 
         let name_start = self.cursor();
@@ -151,8 +154,58 @@ where
             .unwrap_or(false)
     }
 
+    fn eat_double_quoted_string(&mut self) -> LexerResult {
+        let start = self.cursor();
+        debug_assert_eq!(self.next_char().expect("expected a double quote"), '"');
+
+        let mut string = String::new();
+
+        loop {
+            match self.next_char() {
+                Some('\\') => {
+                    // Handle escape sequences
+                    if let Some(escape_char) = self.next_char() {
+                        match escape_char {
+                            // Recognized escape sequences
+                            'n' => string.push('\n'),
+                            'r' => string.push('\r'),
+                            't' => string.push('\t'),
+                            'f' => string.push('\x0C'), // Form feed (U+000C)
+                            '\\' => string.push('\\'),
+                            '"' => string.push('"'),
+                            _ => {
+                                string.push('\\');
+                                string.push(escape_char);
+                            }
+                        }
+                    }
+                }
+                Some('"') => break,        // End of the string literal
+                Some(c) => string.push(c), // Regular characters
+                None => {
+                    // Non-terminated string literal
+                    return Err(LexerError {
+                        kind: LexerErrorKind::NonTerminatedStringLiteral,
+                        location: Span {
+                            start,
+                            end: self.cursor(),
+                        },
+                    });
+                }
+            }
+        }
+
+        Ok((
+            start,
+            Token::String {
+                value: string.into(),
+            },
+            self.cursor(),
+        ))
+    }
+
     // parse number
-    fn number(&mut self) -> LexerResult {
+    fn eat_number(&mut self) -> LexerResult {
         let number: SpannedToken = match self.ch0 {
             Some('0') => match self.ch1 {
                 Some('x') | Some('X') => {
@@ -177,6 +230,17 @@ where
             },
             _ => self.eat_decimal_number()?,
         };
+
+        if self.ch0 == Some('_') {
+            let location = self.cursor();
+            return Err(LexerError {
+                kind: LexerErrorKind::NumberTrailingUnderScore,
+                location: Span {
+                    start: location,
+                    end: location,
+                },
+            });
+        }
 
         Ok(number)
     }
@@ -381,9 +445,21 @@ where
 #[allow(unused)]
 fn get_keyword_from_str(string: &str) -> Option<Token> {
     let may_be_keyword = match string {
+        "as" => Token::As,
+        "class" => Token::Class,
         "let" => Token::Let,
         "mut" => Token::Mut,
+        "panic" => Token::Panic,
+        "pub" => Token::Pub,
         "return" => Token::Return,
+        "self" => Token::ClassSelf,
+        "using" => Token::Using,
+        "if" => Token::If,
+        "else" => Token::Else,
+        "todo" => Token::Todo,
+        "fn" => Token::Fn,
+        "for" => Token::For,
+        "loop" => Token::Loop,
         _ => Token::Unknown,
     };
 

@@ -3,6 +3,7 @@ use crate::ast::span::Span;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LexerErrorKind {
     NumberTrailingUnderScore,
+    NonTerminatedStringLiteral,
     MissingExponentValue,
     EmptyRadix,
 }
