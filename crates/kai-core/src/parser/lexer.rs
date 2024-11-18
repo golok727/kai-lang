@@ -1,13 +1,13 @@
 use crate::ast::span::Span;
 
 use super::error::{LexerError, LexerErrorKind};
-use super::token::Token;
+use super::token::TokenKind;
 
 // start  token  end
-pub type SpannedToken = (usize, Token, usize);
+pub type Token = (usize, TokenKind, usize);
 
-impl From<SpannedToken> for Span {
-    fn from(value: SpannedToken) -> Self {
+impl From<Token> for Span {
+    fn from(value: Token) -> Self {
         Span {
             start: value.0,
             end: value.2,
@@ -21,10 +21,10 @@ pub struct Lexer<T: Iterator<Item = char>> {
     ch1: Option<char>,
     start: usize,
     end: usize,
-    token_queue: Vec<SpannedToken>,
+    token_queue: Vec<Token>,
 }
 
-pub type LexerResult = Result<SpannedToken, LexerError>;
+pub type LexerResult = Result<Token, LexerError>;
 
 impl<T> Lexer<T>
 where
@@ -56,7 +56,6 @@ where
 
     fn consume(&mut self) -> Result<(), LexerError> {
         if let Some(c) = self.ch0 {
-            // println!("char({})", c);
             if self.is_name_start(c) {
                 let name = self.eat_name()?;
                 self.queue(name)
@@ -68,14 +67,14 @@ where
             }
         } else {
             let pos = self.cursor();
-            self.queue((pos, Token::Eof, pos));
+            self.queue((pos, TokenKind::Eof, pos));
         }
 
         Ok(())
     }
 
     #[inline]
-    fn eat_single_token(&mut self, tk: Token) -> Token {
+    fn eat_single_token(&mut self, tk: TokenKind) -> TokenKind {
         self.next_char();
         tk
     }
@@ -119,18 +118,18 @@ where
         let spanned = match doc_str {
             Some(doc) => (
                 start,
-                Token::DocComment {
+                TokenKind::DocComment {
                     comment: doc.into(),
                 },
                 end,
             ),
-            _ => (start, Token::Comment, end),
+            _ => (start, TokenKind::Comment, end),
         };
 
         Ok(spanned)
     }
 
-    fn eat_comment(&mut self) -> SpannedToken {
+    fn eat_comment(&mut self) -> Token {
         let start = self.cursor();
         debug_assert_eq!(self.next_char(), Some('/'));
         debug_assert_eq!(self.next_char(), Some('/'));
@@ -148,36 +147,36 @@ where
         }
 
         let end = self.cursor();
-        (start, Token::Comment, end)
+        (start, TokenKind::Comment, end)
     }
 
     fn eat_single_character(&mut self) -> Result<(), LexerError> {
         if let Some(c) = self.ch0 {
             let start = self.cursor();
 
-            let token: Option<Token> = match c {
+            let token: Option<TokenKind> = match c {
                 '\r' => {
                     self.next_char();
                     if self.ch0 == Some('\n') {
                         self.next_char(); // consume '\n' after '\r'
                     }
-                    Some(Token::NewLine) // return NewLine token for CR or CRLF
+                    Some(TokenKind::NewLine) // return NewLine token for CR or CRLF
                 }
                 '\n' => {
-                    Some(self.eat_single_token(Token::NewLine)) // return NewLine token for LF
+                    Some(self.eat_single_token(TokenKind::NewLine)) // return NewLine token for LF
                 }
                 ' ' | '\t' | '\x0C' => {
                     self.next_char(); // eat whitespace
                     None
                 }
-                '(' => Some(self.eat_single_token(Token::LParen)),
-                ')' => Some(self.eat_single_token(Token::RParen)),
+                '(' => Some(self.eat_single_token(TokenKind::LParen)),
+                ')' => Some(self.eat_single_token(TokenKind::RParen)),
 
-                '[' => Some(self.eat_single_token(Token::LBracket)),
-                ']' => Some(self.eat_single_token(Token::RBracket)),
+                '[' => Some(self.eat_single_token(TokenKind::LBracket)),
+                ']' => Some(self.eat_single_token(TokenKind::RBracket)),
 
-                '{' => Some(self.eat_single_token(Token::LCurly)),
-                '}' => Some(self.eat_single_token(Token::RCurly)),
+                '{' => Some(self.eat_single_token(TokenKind::LCurly)),
+                '}' => Some(self.eat_single_token(TokenKind::RCurly)),
 
                 '/' => match self.ch1 {
                     Some('/') => {
@@ -193,33 +192,33 @@ where
 
                     Some('=') => {
                         self.next_char();
-                        Some(self.eat_single_token(Token::DivEq))
+                        Some(self.eat_single_token(TokenKind::DivEq))
                     }
-                    _ => Some(self.eat_single_token(Token::Slash)),
+                    _ => Some(self.eat_single_token(TokenKind::Slash)),
                 },
 
                 '-' => match self.ch1 {
                     Some('=') => {
                         self.next_char();
                         self.next_char();
-                        Some(Token::MinusEq)
+                        Some(TokenKind::MinusEq)
                     }
                     Some('>') => {
                         self.next_char();
                         self.next_char();
-                        Some(Token::ArrowRight)
+                        Some(TokenKind::ArrowRight)
                     }
-                    _ => Some(self.eat_single_token(Token::Minus)),
+                    _ => Some(self.eat_single_token(TokenKind::Minus)),
                 },
 
                 '+' | '*' | '!' | '=' | '>' | '<' => {
                     let tok = match c {
-                        '+' => (Token::Plus, Token::PlusEq),
-                        '*' => (Token::Star, Token::MulEq),
-                        '!' => (Token::Bang, Token::NotEq),
-                        '=' => (Token::Eq, Token::EqEq),
-                        '>' => (Token::Gt, Token::GtEq),
-                        '<' => (Token::Lt, Token::LtEq),
+                        '+' => (TokenKind::Plus, TokenKind::PlusEq),
+                        '*' => (TokenKind::Star, TokenKind::MulEq),
+                        '!' => (TokenKind::Bang, TokenKind::NotEq),
+                        '=' => (TokenKind::Eq, TokenKind::EqEq),
+                        '>' => (TokenKind::Gt, TokenKind::GtEq),
+                        '<' => (TokenKind::Lt, TokenKind::LtEq),
                         _ => unreachable!(),
                     };
 
@@ -243,7 +242,7 @@ where
 
                     if self.ch0 == Some('=') {
                         self.next_char();
-                        Some(Token::DotDotEq)
+                        Some(TokenKind::DotDotEq)
                     } else {
                         if self.ch0 == Some('.') {
                             n_dots += 1;
@@ -251,9 +250,9 @@ where
                         }
 
                         let token = match n_dots {
-                            1 => Token::Dot,
-                            2 => Token::DotDot,
-                            3 => Token::DotDotDot,
+                            1 => TokenKind::Dot,
+                            2 => TokenKind::DotDot,
+                            3 => TokenKind::DotDotDot,
                             _ => unreachable!(),
                         };
 
@@ -261,8 +260,8 @@ where
                     }
                 }
 
-                ';' => Some(self.eat_single_token(Token::SemiColon)),
-                ':' => Some(self.eat_single_token(Token::Colon)),
+                ';' => Some(self.eat_single_token(TokenKind::SemiColon)),
+                ':' => Some(self.eat_single_token(TokenKind::Colon)),
                 '"' => {
                     let spanned = self.eat_double_quoted_string()?;
                     self.queue(spanned);
@@ -270,7 +269,7 @@ where
                 }
                 _ => {
                     self.next_char();
-                    Some(Token::Unknown)
+                    Some(TokenKind::Unknown)
                 }
             };
 
@@ -300,9 +299,9 @@ where
             Some(token) => token,
             None => {
                 if name.starts_with('_') {
-                    Token::DiscardName { name: name.into() }
+                    TokenKind::DiscardName { name: name.into() }
                 } else {
-                    Token::Name { name: name.into() }
+                    TokenKind::Name { name: name.into() }
                 }
             }
         };
@@ -363,7 +362,7 @@ where
 
         Ok((
             start,
-            Token::String {
+            TokenKind::String {
                 value: string.into(),
             },
             self.cursor(),
@@ -372,7 +371,7 @@ where
 
     // parse number
     fn eat_number(&mut self) -> LexerResult {
-        let number: SpannedToken = match self.ch0 {
+        let number: Token = match self.ch0 {
             Some('0') => match self.ch1 {
                 Some('x') | Some('X') => {
                     let start = self.cursor();
@@ -430,7 +429,7 @@ where
 
             Ok((
                 start,
-                Token::Int {
+                TokenKind::Int {
                     value: value.into(),
                     int_value,
                 },
@@ -494,14 +493,14 @@ where
         }
 
         let token = if is_decimal {
-            Token::Float {
+            TokenKind::Float {
                 value: value.into(),
             }
         } else {
             let int_value =
                 super::parse_int_value(&value).expect("should have parsed to an int value");
 
-            Token::Int {
+            TokenKind::Int {
                 value: value.into(),
                 int_value,
             }
@@ -591,7 +590,7 @@ where
     }
 
     #[inline]
-    fn queue(&mut self, value: SpannedToken) {
+    fn queue(&mut self, value: Token) {
         self.token_queue.push(value)
     }
 
@@ -609,37 +608,37 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.advance() {
-            Ok((_, Token::Eof, _)) => None,
+            Ok((_, TokenKind::Eof, _)) => None,
             t => Some(t),
         }
     }
 }
 
 #[allow(unused)]
-fn get_keyword_from_str(string: &str) -> Option<Token> {
+fn get_keyword_from_str(string: &str) -> Option<TokenKind> {
     let may_be_keyword = match string {
-        "as" => Token::As,
-        "class" => Token::Class,
-        "let" => Token::Let,
-        "mut" => Token::Mut,
-        "panic" => Token::Panic,
-        "pub" => Token::Pub,
-        "return" => Token::Return,
-        "self" => Token::ClassSelf,
-        "using" => Token::Using,
-        "if" => Token::If,
-        "else" => Token::Else,
-        "todo" => Token::Todo,
-        "fn" => Token::Fn,
-        "for" => Token::For,
-        "in" => Token::In,
-        "loop" => Token::Loop,
+        "as" => TokenKind::As,
+        "class" => TokenKind::Class,
+        "let" => TokenKind::Let,
+        "mut" => TokenKind::Mut,
+        "panic" => TokenKind::Panic,
+        "pub" => TokenKind::Pub,
+        "return" => TokenKind::Return,
+        "self" => TokenKind::ClassSelf,
+        "using" => TokenKind::Using,
+        "if" => TokenKind::If,
+        "else" => TokenKind::Else,
+        "todo" => TokenKind::Todo,
+        "fn" => TokenKind::Fn,
+        "for" => TokenKind::For,
+        "in" => TokenKind::In,
+        "loop" => TokenKind::Loop,
 
-        _ => Token::Unknown,
+        _ => TokenKind::Unknown,
     };
 
     match may_be_keyword {
-        Token::Unknown => None,
+        TokenKind::Unknown => None,
         token => Some(token),
     }
 }
@@ -657,15 +656,15 @@ mod tests {
 
             let tokens: Vec<String> = lexer
                 .map(|res| res.unwrap())
-                .filter(|res| res.1 != Token::Unknown)
+                .filter(|res| res.1 != TokenKind::Unknown)
                 .map(|res| {
                     let thing = match res.1 {
-                        Token::Float { .. } => "float",
-                        Token::Int { .. } => "int",
+                        TokenKind::Float { .. } => "float",
+                        TokenKind::Int { .. } => "int",
                         _ => unreachable!(),
                     };
                     match res.1 {
-                        Token::Float { value } | Token::Int { value, .. } => {
+                        TokenKind::Float { value } | TokenKind::Int { value, .. } => {
                             format!("{}(\"{}\", {}, {})", thing, &value.as_str(), res.0, res.2)
                         }
                         _ => unreachable!(),
@@ -677,7 +676,7 @@ mod tests {
             println!("{}", joined);
         }
 
-        fn create_test_case() -> Vec<SpannedToken> {
+        fn create_test_case() -> Vec<Token> {
             // the + and - should not affect the parsing
             let code = r#"
             100e10
@@ -709,27 +708,27 @@ mod tests {
             // print_mock_test_data(&code);
 
             let lexer = Lexer::new(code.chars());
-            let tokens: Vec<SpannedToken> = lexer
+            let tokens: Vec<Token> = lexer
                 .map(|res| res.unwrap())
-                .filter(|res| matches!(res.1, Token::Int { .. } | Token::Float { .. }))
+                .filter(|res| matches!(res.1, TokenKind::Int { .. } | TokenKind::Float { .. }))
                 .collect();
 
             //
             tokens
         }
 
-        fn float(value: &str, start: usize, end: usize) -> SpannedToken {
-            let token = Token::Float {
+        fn float(value: &str, start: usize, end: usize) -> Token {
+            let token = TokenKind::Float {
                 value: value.into(),
             };
 
             (start, token, end)
         }
 
-        fn int(value: &str, start: usize, end: usize) -> SpannedToken {
+        fn int(value: &str, start: usize, end: usize) -> Token {
             let int_value =
                 crate::parser::parse_int_value(value).expect("should have parsed to an int value");
-            let token = Token::Int {
+            let token = TokenKind::Int {
                 value: value.into(),
                 int_value, //
             };
@@ -742,7 +741,7 @@ mod tests {
             // TODO add more _ tests
             let tokens = create_test_case();
 
-            let expected: Vec<SpannedToken> = vec![
+            let expected: Vec<Token> = vec![
                 float("100e10", 0, 6),
                 float("1e110", 19, 24),
                 float("1.112e100", 37, 46),
@@ -802,11 +801,11 @@ mod tests {
             for item in tokens.iter() {
                 let token = &item.1;
                 match token {
-                    Token::Float { value } => {
+                    TokenKind::Float { value } => {
                         let float_val: f64 = value.parse().unwrap();
                         floats.push(float_val);
                     }
-                    Token::Int { value, .. } => {
+                    TokenKind::Int { value, .. } => {
                         let int_val: i32 = value.parse().unwrap();
                         ints.push(int_val);
                     }
@@ -836,9 +835,9 @@ mod tests {
             .trim();
 
             let lexer = Lexer::new(code.chars());
-            let tokens: Vec<SpannedToken> = lexer
+            let tokens: Vec<Token> = lexer
                 .map(|res| res.unwrap())
-                .filter(|res| matches!(res.1, Token::Int { .. } | Token::Float { .. }))
+                .filter(|res| matches!(res.1, TokenKind::Int { .. } | TokenKind::Float { .. }))
                 .collect();
 
             assert_eq!(tokens, expected)
@@ -847,7 +846,7 @@ mod tests {
 
     #[test]
     fn number_parsing_should_not_be_greedy_with_dot_access() {
-        use Token::*;
+        use TokenKind::*;
         let code = "
             10.0
             10.radians()
@@ -901,17 +900,17 @@ mod tests {
         ];
 
         let lexer = Lexer::new(code.chars());
-        let tokens: Vec<SpannedToken> = lexer.map(|res| res.unwrap()).collect();
+        let tokens: Vec<Token> = lexer.map(|res| res.unwrap()).collect();
 
         assert_eq!(tokens, expected)
     }
 
-    fn lex_input(input: &str) -> Vec<SpannedToken> {
+    fn lex_input(input: &str) -> Vec<Token> {
         let mut lexer = Lexer::new(input.chars());
         let mut tokens = Vec::new();
 
         while let Ok(token) = lexer.advance() {
-            if matches!(token.1, Token::Eof) {
+            if matches!(token.1, TokenKind::Eof) {
                 tokens.push(token);
                 break;
             }
@@ -928,17 +927,17 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                (0, Token::LParen, 1),
-                (2, Token::RParen, 3),
-                (4, Token::LBracket, 5),
-                (6, Token::RBracket, 7),
-                (8, Token::LCurly, 9),
-                (10, Token::RCurly, 11),
-                (12, Token::Plus, 13),
-                (14, Token::Minus, 15),
-                (16, Token::SemiColon, 17),
-                (18, Token::Colon, 19),
-                (19, Token::Eof, 19)
+                (0, TokenKind::LParen, 1),
+                (2, TokenKind::RParen, 3),
+                (4, TokenKind::LBracket, 5),
+                (6, TokenKind::RBracket, 7),
+                (8, TokenKind::LCurly, 9),
+                (10, TokenKind::RCurly, 11),
+                (12, TokenKind::Plus, 13),
+                (14, TokenKind::Minus, 15),
+                (16, TokenKind::SemiColon, 17),
+                (18, TokenKind::Colon, 19),
+                (19, TokenKind::Eof, 19)
             ]
         );
     }
@@ -950,22 +949,22 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                (0, Token::Name { name: "abc".into() }, 3),
+                (0, TokenKind::Name { name: "abc".into() }, 3),
                 (
                     4,
-                    Token::DiscardName {
+                    TokenKind::DiscardName {
                         name: "_abc".into()
                     },
                     8
                 ),
                 (
                     9,
-                    Token::DiscardName {
+                    TokenKind::DiscardName {
                         name: "_123".into()
                     },
                     13
                 ),
-                (13, Token::Eof, 13)
+                (13, TokenKind::Eof, 13)
             ]
         );
     }
@@ -979,7 +978,7 @@ mod tests {
             vec![
                 (
                     0,
-                    Token::Int {
+                    TokenKind::Int {
                         value: "123".into(),
                         int_value: 123
                     },
@@ -987,7 +986,7 @@ mod tests {
                 ),
                 (
                     4,
-                    Token::Int {
+                    TokenKind::Int {
                         value: "0x1A".into(),
                         int_value: 26
                     },
@@ -995,7 +994,7 @@ mod tests {
                 ),
                 (
                     9,
-                    Token::Int {
+                    TokenKind::Int {
                         value: "0o77".into(),
                         int_value: 63
                     },
@@ -1003,13 +1002,13 @@ mod tests {
                 ),
                 (
                     14,
-                    Token::Int {
+                    TokenKind::Int {
                         value: "0b101".into(),
                         int_value: 5
                     },
                     19
                 ),
-                (19, Token::Eof, 19)
+                (19, TokenKind::Eof, 19)
             ]
         );
     }
@@ -1023,19 +1022,19 @@ mod tests {
             vec![
                 (
                     0,
-                    Token::String {
+                    TokenKind::String {
                         value: "hello".into()
                     },
                     7
                 ),
                 (
                     8,
-                    Token::String {
+                    TokenKind::String {
                         value: "escaped\nstring".into()
                     },
                     25
                 ),
-                (25, Token::Eof, 25)
+                (25, TokenKind::Eof, 25)
             ]
         );
     }
@@ -1044,7 +1043,7 @@ mod tests {
     fn test_eof() {
         let input = "";
         let tokens = lex_input(input);
-        assert_eq!(tokens, vec![(0, Token::Eof, 0),]);
+        assert_eq!(tokens, vec![(0, TokenKind::Eof, 0),]);
     }
 
     #[test]
@@ -1054,28 +1053,28 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                (0, Token::EqEq, 2),
-                (3, Token::Dot, 4),
-                (5, Token::DotDot, 7),
-                (8, Token::DotDotDot, 11),
-                (12, Token::ArrowRight, 14),
-                (15, Token::Plus, 16),
-                (17, Token::Star, 18),
-                (19, Token::Minus, 20),
-                (21, Token::Slash, 22),
-                (23, Token::PlusEq, 25),
-                (26, Token::MinusEq, 28),
-                (29, Token::MulEq, 31),
-                (32, Token::DivEq, 34),
-                (35, Token::Eq, 36),
-                (37, Token::Bang, 38),
-                (39, Token::NotEq, 41),
-                (42, Token::DotDotEq, 45),
-                (46, Token::Gt, 47),
-                (48, Token::Lt, 49),
-                (50, Token::GtEq, 52),
-                (53, Token::LtEq, 55),
-                (55, Token::Eof, 55),
+                (0, TokenKind::EqEq, 2),
+                (3, TokenKind::Dot, 4),
+                (5, TokenKind::DotDot, 7),
+                (8, TokenKind::DotDotDot, 11),
+                (12, TokenKind::ArrowRight, 14),
+                (15, TokenKind::Plus, 16),
+                (17, TokenKind::Star, 18),
+                (19, TokenKind::Minus, 20),
+                (21, TokenKind::Slash, 22),
+                (23, TokenKind::PlusEq, 25),
+                (26, TokenKind::MinusEq, 28),
+                (29, TokenKind::MulEq, 31),
+                (32, TokenKind::DivEq, 34),
+                (35, TokenKind::Eq, 36),
+                (37, TokenKind::Bang, 38),
+                (39, TokenKind::NotEq, 41),
+                (42, TokenKind::DotDotEq, 45),
+                (46, TokenKind::Gt, 47),
+                (48, TokenKind::Lt, 49),
+                (50, TokenKind::GtEq, 52),
+                (53, TokenKind::LtEq, 55),
+                (55, TokenKind::Eof, 55),
             ]
         );
     }
@@ -1087,9 +1086,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                (2, Token::NewLine, 3), // LF
-                (3, Token::NewLine, 5), // CRLF
-                (5, Token::Eof, 5)
+                (2, TokenKind::NewLine, 3), // LF
+                (3, TokenKind::NewLine, 5), // CRLF
+                (5, TokenKind::Eof, 5)
             ]
         );
     }
@@ -1101,10 +1100,10 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                (0, Token::Unknown, 1),
-                (1, Token::Unknown, 2),
-                (2, Token::Unknown, 3),
-                (3, Token::Eof, 3)
+                (0, TokenKind::Unknown, 1),
+                (1, TokenKind::Unknown, 2),
+                (2, TokenKind::Unknown, 3),
+                (3, TokenKind::Eof, 3)
             ]
         );
     }
@@ -1137,6 +1136,7 @@ mod tests {
 
     #[test]
     fn test_comments() {
+        use TokenKind::*; 
         let input = "
             // hello code
             /*
@@ -1149,7 +1149,26 @@ mod tests {
             */
             
         ";
-        let tokens = lex_input(input);
-        dbg!(tokens);
+
+        let tokens = lex_input(input)
+            .into_iter()
+            .filter(|t| !matches!(t.1, TokenKind::NewLine))
+            .collect::<Vec<Token>>();
+
+
+        assert_eq!(tokens,
+            [
+                ( 13, Comment, 27, ),
+                ( 39, Comment, 78, ),
+                (
+                    92,
+                    DocComment {
+                        comment: "\n             * Welcome to Kai lang\n             * thing is a thing\n            ".into(),
+                    },
+                    177,
+                ),
+                ( 199, Eof, 199, ),
+            ]        
+        );
     }
 }

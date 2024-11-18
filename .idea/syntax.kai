@@ -1,4 +1,37 @@
+use kai;
+use kai.json; 
+use kai.serde.{serialize, deserialize, field}; 
 
-let i = 10;
+@serialize
+@serde
+pub class Person {
+	@field
+	pub name: string; 
 
+	@field
+	pub age: number; 
+
+	pub new(name: string, age: number) {
+		Person { name, age }
+	}
+
+	pub is_eighteen_and_over(self) {
+		self.age > 18 
+	}
+}
+
+
+@depricated
+pub fn dont_use() {
+  panic "told you not to use this"
+}
+
+
+fn main() {
+	let person = Person.new("Aadi", 20); 
+	let serialized = json.serialize(person); 
+	let _deserialized: Person = json.deserialize(serialized); 
+
+	kai.io.print(json.serialize(Person()))
+}
 

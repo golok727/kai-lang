@@ -6,3 +6,4 @@ authors = ["Aadi <github.com/golok727>"]
 
 [dependencies]
 ecow.workspace = true
+thin-vec.workspace = true

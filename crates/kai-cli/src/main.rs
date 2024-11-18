@@ -1,6 +1,6 @@
 use kai_core::{
     ast::span::span,
-    parser::lexer::{Lexer, SpannedToken},
+    parser::lexer::{Lexer, Token},
     runtime::Engine,
 };
 
@@ -29,7 +29,7 @@ pub fn sandbox_lexer() {
 
     let lexer = Lexer::new(code.chars());
 
-    let tokens: Vec<SpannedToken> = lexer.map(|res| res.unwrap()).collect();
+    let tokens: Vec<Token> = lexer.map(|res| res.unwrap()).collect();
 
     // println!("{:#?}", &tokens);
 
