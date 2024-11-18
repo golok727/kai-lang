@@ -67,7 +67,8 @@ where
                 self.eat_single_character()?;
             }
         } else {
-            self.queue((0, Token::Eof, 0));
+            let pos = self.cursor();
+            self.queue((pos, Token::Eof, pos));
         }
 
         Ok(())
@@ -86,7 +87,7 @@ where
             let token: Option<Token> = match c {
                 '\r' => {
                     self.next_char();
-                    if self.ch1 == Some('\n') {
+                    if self.ch0 == Some('\n') {
                         self.next_char(); // consume '\n' after '\r'
                     }
                     Some(Token::NewLine) // return NewLine token for CR or CRLF
@@ -107,8 +108,29 @@ where
                 '{' => Some(self.eat_single_token(Token::LCurly)),
                 '}' => Some(self.eat_single_token(Token::RCurly)),
 
-                '+' => Some(self.eat_single_token(Token::Plus)),
+                '+' | '*' | '/' | '!' | '=' => {
+                    let tok = match c {
+                        '+' => (Token::Plus, Token::PlusEq),
+                        '*' => (Token::Star, Token::MulEq),
+                        '/' => (Token::Slash, Token::DivEq),
+                        '!' => (Token::Bang, Token::NotEq),
+                        '=' => (Token::Eq, Token::EqEq),
+                        _ => unreachable!(),
+                    };
+
+                    if self.ch1 == Some('=') {
+                        self.next_char();
+                        Some(self.eat_single_token(tok.1))
+                    } else {
+                        Some(self.eat_single_token(tok.0))
+                    }
+                }
                 '-' => match self.ch1 {
+                    Some('=') => {
+                        self.next_char();
+                        self.next_char();
+                        Some(Token::MinusEq)
+                    }
                     Some('>') => {
                         self.next_char();
                         self.next_char();
@@ -140,16 +162,6 @@ where
                     };
 
                     Some(token)
-                }
-
-                '=' => {
-                    if self.ch1 == Some('=') {
-                        self.next_char();
-                        self.next_char();
-                        Some(Token::EqEq)
-                    } else {
-                        Some(self.eat_single_token(Token::Eq))
-                    }
                 }
 
                 ';' => Some(self.eat_single_token(Token::SemiColon)),
@@ -281,7 +293,7 @@ where
                     let start = self.cursor();
                     self.next_char().expect("number: expected 0x");
                     self.next_char().expect("number: expected 0x");
-                    self.eat_radix_number(start, 2, "0")?
+                    self.eat_radix_number(start, 2, "0b")?
                 }
                 _ => self.eat_decimal_number()?,
             },
@@ -349,7 +361,8 @@ where
 
         // if matches!(self.ch0, Some('e') | Some('E') | Some('.')) {
 
-        if (self.ch0 == Some('.') && (self.ch1 != Some('.')))
+        if (self.ch0 == Some('.')
+            && (self.ch1 != Some('.') || (!self.ch1.is_some_and(|c| self.is_name_start(c)))))
             || matches!(self.ch0, Some('e') | Some('E'))
         {
             is_decimal = true;
@@ -733,5 +746,283 @@ mod tests {
 
             assert_eq!(tokens, expected)
         }
+    }
+
+    #[test]
+    fn number_parsing_should_not_be_greedy_with_dot_access() {
+        use Token::*;
+        let code = "
+            10.0
+            10.radians()
+            10.degreees()
+        ";
+
+        let expected = [
+            (0, NewLine, 1),
+            (
+                13,
+                Float {
+                    value: "10.0".into(),
+                },
+                17,
+            ),
+            (17, NewLine, 18),
+            (
+                30,
+                Float {
+                    value: "10.".into(),
+                },
+                33,
+            ),
+            (
+                33,
+                Name {
+                    name: "radians".into(),
+                },
+                40,
+            ),
+            (40, LParen, 41),
+            (41, RParen, 42),
+            (42, NewLine, 43),
+            (
+                55,
+                Float {
+                    value: "10.".into(),
+                },
+                58,
+            ),
+            (
+                58,
+                Name {
+                    name: "degreees".into(),
+                },
+                66,
+            ),
+            (66, LParen, 67),
+            (67, RParen, 68),
+            (68, NewLine, 69),
+        ];
+
+        let lexer = Lexer::new(code.chars());
+        let tokens: Vec<SpannedToken> = lexer.map(|res| res.unwrap()).collect();
+
+        assert_eq!(tokens, expected)
+    }
+
+    fn lex_input(input: &str) -> Vec<SpannedToken> {
+        let mut lexer = Lexer::new(input.chars());
+        let mut tokens = Vec::new();
+
+        while let Ok(token) = lexer.advance() {
+            if matches!(token.1, Token::Eof) {
+                tokens.push(token);
+                break;
+            }
+            tokens.push(token);
+        }
+
+        tokens
+    }
+
+    #[test]
+    fn test_single_characters() {
+        let input = "( ) [ ] { } + - ; :";
+        let tokens = lex_input(input);
+        assert_eq!(
+            tokens,
+            vec![
+                (0, Token::LParen, 1),
+                (2, Token::RParen, 3),
+                (4, Token::LBracket, 5),
+                (6, Token::RBracket, 7),
+                (8, Token::LCurly, 9),
+                (10, Token::RCurly, 11),
+                (12, Token::Plus, 13),
+                (14, Token::Minus, 15),
+                (16, Token::SemiColon, 17),
+                (18, Token::Colon, 19),
+                (19, Token::Eof, 19)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_identifiers() {
+        let input = "abc _abc _123";
+        let tokens = lex_input(input);
+        assert_eq!(
+            tokens,
+            vec![
+                (0, Token::Name { name: "abc".into() }, 3),
+                (
+                    4,
+                    Token::DiscardName {
+                        name: "_abc".into()
+                    },
+                    8
+                ),
+                (
+                    9,
+                    Token::DiscardName {
+                        name: "_123".into()
+                    },
+                    13
+                ),
+                (13, Token::Eof, 13)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_numbers() {
+        let input = "123 0x1A 0o77 0b101";
+        let tokens = lex_input(input);
+        assert_eq!(
+            tokens,
+            vec![
+                (
+                    0,
+                    Token::Int {
+                        value: "123".into(),
+                        int_value: 123
+                    },
+                    3
+                ),
+                (
+                    4,
+                    Token::Int {
+                        value: "0x1A".into(),
+                        int_value: 26
+                    },
+                    8
+                ),
+                (
+                    9,
+                    Token::Int {
+                        value: "0o77".into(),
+                        int_value: 63
+                    },
+                    13
+                ),
+                (
+                    14,
+                    Token::Int {
+                        value: "0b101".into(),
+                        int_value: 5
+                    },
+                    19
+                ),
+                (19, Token::Eof, 19)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_strings() {
+        let input = r#""hello" "escaped\nstring""#;
+        let tokens = lex_input(input);
+        assert_eq!(
+            tokens,
+            vec![
+                (
+                    0,
+                    Token::String {
+                        value: "hello".into()
+                    },
+                    7
+                ),
+                (
+                    8,
+                    Token::String {
+                        value: "escaped\nstring".into()
+                    },
+                    25
+                ),
+                (25, Token::Eof, 25)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_eof() {
+        let input = "";
+        let tokens = lex_input(input);
+        assert_eq!(tokens, vec![(0, Token::Eof, 0),]);
+    }
+
+    #[test]
+    fn test_operators_and_symbols() {
+        let input = "== . .. ... -> + * - /";
+        let tokens = lex_input(input);
+        assert_eq!(
+            tokens,
+            vec![
+                (0, Token::EqEq, 2),
+                (3, Token::Dot, 4),
+                (5, Token::DotDot, 7),
+                (8, Token::DotDotDot, 11),
+                (12, Token::ArrowRight, 14),
+                (15, Token::Plus, 16),
+                (17, Token::Star, 18),
+                (19, Token::Minus, 20),
+                (21, Token::Slash, 22),
+                (22, Token::Eof, 22)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_newlines_and_whitespace() {
+        let input = " \t\n\r\n";
+        let tokens = lex_input(input);
+        assert_eq!(
+            tokens,
+            vec![
+                (2, Token::NewLine, 3), // LF
+                (3, Token::NewLine, 5), // CRLF
+                (5, Token::Eof, 5)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_invalid_tokens() {
+        let input = "#$%";
+        let tokens = lex_input(input);
+        assert_eq!(
+            tokens,
+            vec![
+                (0, Token::Unknown, 1),
+                (1, Token::Unknown, 2),
+                (2, Token::Unknown, 3),
+                (3, Token::Eof, 3)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_error_non_terminated_string() {
+        let input = r#""hello"#;
+        let mut lexer = Lexer::new(input.chars());
+        assert!(matches!(
+            lexer.advance(),
+            Err(LexerError {
+                kind: LexerErrorKind::NonTerminatedStringLiteral,
+                location: Span { start: 0, end: 6 }
+            })
+        ));
+    }
+
+    #[test]
+    fn test_error_trailing_underscore() {
+        let input = "123_";
+        let mut lexer = Lexer::new(input.chars());
+        assert!(matches!(
+            lexer.advance(),
+            Err(LexerError {
+                kind: LexerErrorKind::NumberTrailingUnderScore,
+                location: Span { start: 3, end: 3 }
+            })
+        ));
     }
 }

@@ -35,6 +35,14 @@ pub enum Token {
     Minus,
     Star,
     Slash,
+    PlusEq,
+    MinusEq,
+    MulEq,
+    DivEq,
+
+    Comment,
+    BlockComment,
+    DocComment { comment: EcoString },
 
     LParen,
     RParen,
@@ -51,6 +59,8 @@ pub enum Token {
     DotDotDot,
     Eq,
     EqEq,
+    Bang,
+    NotEq,
     SemiColon,
     Colon,
     Unknown,
@@ -92,10 +102,16 @@ impl Display for Token {
             Token::Dot => ".",
             Token::DotDot => "..",
             Token::DotDotDot => "...",
+            Token::Bang => "!",
+            Token::NotEq => "!=",
             Token::Eq => "=",
             Token::EqEq => "==",
             Token::SemiColon => ";",
             Token::Colon => ":",
+
+            Token::Comment => "// ... comment",
+            Token::BlockComment => "/* ... block comment */",
+            Token::DocComment { .. } => "Doc comment",
 
             Token::Name { name } | Token::DiscardName { name } => name.as_str(),
             Token::Int { value, .. } => &format!("int({})", value),
@@ -109,6 +125,11 @@ impl Display for Token {
             Token::Minus => "-",
             Token::Star => "*",
             Token::Slash => "/",
+
+            Token::PlusEq => "+=",
+            Token::MinusEq => "-=",
+            Token::MulEq => "*=",
+            Token::DivEq => "/=",
 
             Token::Unknown => "Unknown",
         };
