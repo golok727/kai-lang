@@ -80,6 +80,77 @@ where
         tk
     }
 
+    fn eat_block_comment(&mut self) -> LexerResult {
+        let start = self.cursor();
+        debug_assert_eq!(self.next_char(), Some('/'));
+        debug_assert_eq!(self.next_char(), Some('*'));
+
+        let mut doc_str: Option<String> = if self.ch0 == Some('*') {
+            self.next_char();
+            Some(String::new())
+        } else {
+            None
+        };
+
+        loop {
+            match self.ch0 {
+                Some('*') => {
+                    if self.ch1 == Some('/') {
+                        self.next_char();
+                        self.next_char();
+                        break;
+                    } else {
+                        let c = self.next_char().expect("expected a character");
+                        if let Some(ref mut doc) = doc_str {
+                            doc.push(c);
+                        }
+                    }
+                }
+                _ => {
+                    let c = self.next_char().expect("expected a character");
+                    if let Some(ref mut doc) = doc_str {
+                        doc.push(c);
+                    }
+                }
+            }
+        }
+
+        let end = self.cursor();
+        let spanned = match doc_str {
+            Some(doc) => (
+                start,
+                Token::DocComment {
+                    comment: doc.into(),
+                },
+                end,
+            ),
+            _ => (start, Token::Comment, end),
+        };
+
+        Ok(spanned)
+    }
+
+    fn eat_comment(&mut self) -> SpannedToken {
+        let start = self.cursor();
+        debug_assert_eq!(self.next_char(), Some('/'));
+        debug_assert_eq!(self.next_char(), Some('/'));
+        // FIXME will source be normalized ?
+        loop {
+            match self.ch0 {
+                Some('\n') | None => {
+                    self.next_char();
+                    break;
+                }
+                _ => {
+                    self.next_char();
+                }
+            }
+        }
+
+        let end = self.cursor();
+        (start, Token::Comment, end)
+    }
+
     fn eat_single_character(&mut self) -> Result<(), LexerError> {
         if let Some(c) = self.ch0 {
             let start = self.cursor();
@@ -108,23 +179,25 @@ where
                 '{' => Some(self.eat_single_token(Token::LCurly)),
                 '}' => Some(self.eat_single_token(Token::RCurly)),
 
-                '+' | '*' | '/' | '!' | '=' => {
-                    let tok = match c {
-                        '+' => (Token::Plus, Token::PlusEq),
-                        '*' => (Token::Star, Token::MulEq),
-                        '/' => (Token::Slash, Token::DivEq),
-                        '!' => (Token::Bang, Token::NotEq),
-                        '=' => (Token::Eq, Token::EqEq),
-                        _ => unreachable!(),
-                    };
-
-                    if self.ch1 == Some('=') {
-                        self.next_char();
-                        Some(self.eat_single_token(tok.1))
-                    } else {
-                        Some(self.eat_single_token(tok.0))
+                '/' => match self.ch1 {
+                    Some('/') => {
+                        let comment = self.eat_comment();
+                        self.queue(comment);
+                        None
                     }
-                }
+                    Some('*') => {
+                        let comment = self.eat_block_comment()?;
+                        self.queue(comment);
+                        None
+                    }
+
+                    Some('=') => {
+                        self.next_char();
+                        Some(self.eat_single_token(Token::DivEq))
+                    }
+                    _ => Some(self.eat_single_token(Token::Slash)),
+                },
+
                 '-' => match self.ch1 {
                     Some('=') => {
                         self.next_char();
@@ -139,6 +212,25 @@ where
                     _ => Some(self.eat_single_token(Token::Minus)),
                 },
 
+                '+' | '*' | '!' | '=' | '>' | '<' => {
+                    let tok = match c {
+                        '+' => (Token::Plus, Token::PlusEq),
+                        '*' => (Token::Star, Token::MulEq),
+                        '!' => (Token::Bang, Token::NotEq),
+                        '=' => (Token::Eq, Token::EqEq),
+                        '>' => (Token::Gt, Token::GtEq),
+                        '<' => (Token::Lt, Token::LtEq),
+                        _ => unreachable!(),
+                    };
+
+                    if self.ch1 == Some('=') {
+                        self.next_char();
+                        Some(self.eat_single_token(tok.1))
+                    } else {
+                        Some(self.eat_single_token(tok.0))
+                    }
+                }
+
                 '.' => {
                     self.next_char();
 
@@ -149,19 +241,24 @@ where
                         self.next_char();
                     }
 
-                    if self.ch0 == Some('.') {
-                        n_dots += 1;
+                    if self.ch0 == Some('=') {
                         self.next_char();
+                        Some(Token::DotDotEq)
+                    } else {
+                        if self.ch0 == Some('.') {
+                            n_dots += 1;
+                            self.next_char();
+                        }
+
+                        let token = match n_dots {
+                            1 => Token::Dot,
+                            2 => Token::DotDot,
+                            3 => Token::DotDotDot,
+                            _ => unreachable!(),
+                        };
+
+                        Some(token)
                     }
-
-                    let token = match n_dots {
-                        1 => Token::Dot,
-                        2 => Token::DotDot,
-                        3 => Token::DotDotDot,
-                        _ => unreachable!(),
-                    };
-
-                    Some(token)
                 }
 
                 ';' => Some(self.eat_single_token(Token::SemiColon)),
@@ -952,7 +1049,7 @@ mod tests {
 
     #[test]
     fn test_operators_and_symbols() {
-        let input = "== . .. ... -> + * - /";
+        let input = "== . .. ... -> + * - / += -= *= /= = ! != ..= > < >= <=";
         let tokens = lex_input(input);
         assert_eq!(
             tokens,
@@ -966,7 +1063,19 @@ mod tests {
                 (17, Token::Star, 18),
                 (19, Token::Minus, 20),
                 (21, Token::Slash, 22),
-                (22, Token::Eof, 22)
+                (23, Token::PlusEq, 25),
+                (26, Token::MinusEq, 28),
+                (29, Token::MulEq, 31),
+                (32, Token::DivEq, 34),
+                (35, Token::Eq, 36),
+                (37, Token::Bang, 38),
+                (39, Token::NotEq, 41),
+                (42, Token::DotDotEq, 45),
+                (46, Token::Gt, 47),
+                (48, Token::Lt, 49),
+                (50, Token::GtEq, 52),
+                (53, Token::LtEq, 55),
+                (55, Token::Eof, 55),
             ]
         );
     }
@@ -1024,5 +1133,23 @@ mod tests {
                 location: Span { start: 3, end: 3 }
             })
         ));
+    }
+
+    #[test]
+    fn test_comments() {
+        let input = "
+            // hello code
+            /*
+                Thing
+            */
+
+            /**
+             * Welcome to Kai lang
+             * thing is a thing
+            */
+            
+        ";
+        let tokens = lex_input(input);
+        dbg!(tokens);
     }
 }

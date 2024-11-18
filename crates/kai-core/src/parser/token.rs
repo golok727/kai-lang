@@ -41,7 +41,6 @@ pub enum Token {
     DivEq,
 
     Comment,
-    BlockComment,
     DocComment { comment: EcoString },
 
     LParen,
@@ -53,9 +52,15 @@ pub enum Token {
 
     ArrowRight,
 
+    Gt,
+    Lt,
+    LtEq,
+    GtEq,
+
     At,
     Dot,
     DotDot,
+    DotDotEq,
     DotDotDot,
     Eq,
     EqEq,
@@ -89,6 +94,11 @@ impl Display for Token {
             Token::In => "in",
             Token::Loop => "loop",
 
+            Token::Gt => ">",
+            Token::Lt => "<",
+            Token::LtEq => "<=",
+            Token::GtEq => ">=",
+
             Token::LParen => "(",
             Token::RParen => ")",
             Token::LBracket => "[",
@@ -101,6 +111,7 @@ impl Display for Token {
             Token::At => "@",
             Token::Dot => ".",
             Token::DotDot => "..",
+            Token::DotDotEq => "..=",
             Token::DotDotDot => "...",
             Token::Bang => "!",
             Token::NotEq => "!=",
@@ -110,7 +121,6 @@ impl Display for Token {
             Token::Colon => ":",
 
             Token::Comment => "// ... comment",
-            Token::BlockComment => "/* ... block comment */",
             Token::DocComment { .. } => "Doc comment",
 
             Token::Name { name } | Token::DiscardName { name } => name.as_str(),
